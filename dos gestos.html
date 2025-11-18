@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Gesto Mano: Abrir / Pulgar Arriba</title>
+
+  <style>
+    body {
+      background: #111;
+      color: white;
+      font-family: Arial;
+      text-align: center;
+    }
+
+    video {
+      display: none;
+    }
+
+    #canvas {
+      width: 640px;
+      height: 480px;
+      border: 1px solid #444;
+      margin-top: 20px;
+    }
+
+    .imgGesture {
+      width: 250px;
+      position: absolute;
+      top: 40px;
+      left: calc(50% - 125px);
+      display: none;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Gestos: Mano Abierta y Pulgar Arriba</h2>
+
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas" width="640" height="480"></canvas>
+
+  <!-- Imagen para mano abierta -->
+  <img id="imgOpen" class="imgGesture"
+    src="https://i.pinimg.com/1200x/7d/3c/d6/7d3cd65da2182b47531a82c7391c97c0.jpg" />
+
+  <!-- Imagen para pulgar arriba -->
+  <img id="imgThumb" class="imgGesture"
+    src="https://i.pinimg.com/736x/84/7e/ff/847eff70404d57d8b9951b90a71bf710.jpg" />
+
+  <!-- Librerías -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const imgOpen = document.getElementById("imgOpen");
+    const imgThumb = document.getElementById("imgThumb");
+
+    // -------------------------
+    // FUNCIONES DE GESTOS
+    // -------------------------
+
+    // Dedo extendido (Índice-Medio-Anular-Meñique)
+    function fingerExtended(tip, pip, mcp, kp) {
+      return kp[tip].y < kp[pip].y && kp[pip].y < kp[mcp].y;
+    }
+
+    // Mano abierta (3 o más dedos extendidos)
+    function isHandOpen(kp) {
+      const fingers = [
+        fingerExtended(8, 6, 5, kp),
+        fingerExtended(12, 10, 9, kp),
+        fingerExtended(16, 14, 13, kp),
+        fingerExtended(20, 18, 17, kp)
+      ];
+      return fingers.filter(f => f).length >= 3;
+    }
+
+    // Pulgar arriba 👍
+    function isThumbUp(kp) {
+      const thumbUp =
+        kp[4].y < kp[3].y &&
+        kp[3].y < kp[2].y;
+
+      const otherFingersExtended = [
+        fingerExtended(8, 6, 5, kp),
+        fingerExtended(12, 10, 9, kp),
+        fingerExtended(16, 14, 13, kp),
+        fingerExtended(20, 18, 17, kp)
+      ];
+
+      return thumbUp && otherFingersExtended.filter(f => f).length <= 1;
+    }
+
+    // -------------------------
+    // CÁMARA
+    // -------------------------
+    async function setupCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480 }
+      });
+      video.srcObject = stream;
+      return new Promise(resolve => (video.onloadedmetadata = () => resolve(video)));
+    }
+
+    // -------------------------
+    // PROGRAMA PRINCIPAL
+    // -------------------------
+    async function main() {
+      await tf.setBackend("webgl");
+      await setupCamera();
+      video.play();
+
+      const detector = await handPoseDetection.createDetector(
+        handPoseDetection.SupportedModels.MediaPipeHands,
+        {
+          runtime: "mediapipe",
+          modelType: "lite",
+          maxHands: 1,
+          solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/hands"
+        }
+      );
+
+      async function detect() {
+        const hands = await detector.estimateHands(video);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        imgOpen.style.display = "none";
+        imgThumb.style.display = "none";
+
+        if (hands.length > 0) {
+          const kp = hands[0].keypoints;
+
+          // Dibujar puntos
+          kp.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = "cyan";
+            ctx.fill();
+          });
+
+          // Mostrar imagen según gesto
+          if (isHandOpen(kp)) {
+            imgOpen.style.display = "block";
+          } else if (isThumbUp(kp)) {
+            imgThumb.style.display = "block";
+          }
+        }
+
+        requestAnimationFrame(detect);
+      }
+
+      detect();
+    }
+
+    main();
+  </script>
+
+</body>
+</html>
+
